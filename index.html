@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>METFRAA Costing Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+:root {
+  --brand-primary: #002b5f; --brand-secondary: #0066B3;
+  --brand-grey-50: #F8F9FA; --brand-grey-200: #E9ECEF;
+  --brand-accent: #FFC107;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--brand-grey-50); color: #333; line-height: 1.5; }
+
+.app-header { background: var(--brand-primary); color: white; border-bottom: 4px solid var(--brand-secondary); display: flex; justify-content: space-between; align-items: center; padding: 10px 24px; position: sticky; top:0; z-index:100; }
+.app-title { font-size: 20px; font-weight: bold; text-transform: uppercase; }
+.brand-logo { height: 40px; background: white; padding: 4px; border-radius: 4px; }
+
+.wizard-steps { display: flex; background: white; border-bottom: 1px solid var(--brand-grey-200); padding: 15px 24px; justify-content: center; gap: 30px; flex-wrap: wrap; }
+.step-indicator { font-size: 13px; font-weight: 600; text-transform: uppercase; color: #adb5bd; }
+.step-indicator.active { color: var(--brand-secondary); border-bottom: 2px solid var(--brand-secondary); padding-bottom: 4px; }
+
+.main { max-width: 1300px; margin: 25px auto; padding: 0 20px; }
+.page { display: none; }
+.page.active { display: block; }
+
+.card { background: white; border: 1px solid var(--brand-grey-200); border-radius: 6px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.section-title { font-size: 15px; font-weight: 700; text-transform: uppercase; color: var(--brand-primary); border-bottom: 2px solid var(--brand-grey-200); padding-bottom: 8px; margin-bottom: 20px; }
+
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+.form-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #495057; }
+.form-input, .form-select { padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; width: 100%; font-family: inherit; }
+.form-input:focus, .form-select:focus { outline: 2px solid var(--brand-secondary); outline-offset: -1px; border-color: var(--brand-secondary); }
+
+.builder-container { display: flex; gap: 20px; align-items: flex-start; }
+.param-list { width: 280px; background: white; border: 1px solid var(--brand-grey-200); border-radius: 6px; max-height: 75vh; overflow-y: auto; flex-shrink: 0; }
+.param-item { padding: 12px 15px; border-bottom: 1px solid var(--brand-grey-200); cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.15s; }
+.param-item:hover { background: #f0f7ff; }
+.param-item.active { background: var(--brand-primary); color: white; }
+.param-item .param-status { float:right; font-size: 11px; opacity: 0.7; }
+.param-item.has-data .param-status::before { content: "● "; color: #28a745; }
+.workspace { flex: 1; min-width: 0; }
+
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; border: 1px solid #ccc; margin-top:10px; }
+.report-table th { background: var(--brand-primary); color: white; padding: 10px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 12px; }
+.report-table td { border: 1px solid #dee2e6; padding: 8px; }
+.row-category { background: var(--brand-grey-200); font-weight: bold; color: var(--brand-primary); text-transform: uppercase; font-size: 12px; }
+.row-total { background: #f1f3f5; font-weight: bold; }
+.row-grand { background: var(--brand-primary); color: white; font-weight: bold; font-size: 14px; }
+.row-grand td { border-color: var(--brand-primary); }
+.cell-num { text-align: right; font-family: 'Consolas', monospace; font-weight: bold; }
+.tag-pct { display:inline-block; padding: 1px 6px; background: #fff3cd; color: #856404; font-size: 10px; border-radius: 3px; margin-left:4px; vertical-align: middle; }
+.tag-rate { display:inline-block; padding: 1px 6px; background: #cfe2ff; color: #084298; font-size: 10px; border-radius: 3px; margin-left:4px; vertical-align: middle; }
+
+.btn-row { display: flex; justify-content: space-between; margin-top: 20px; gap: 10px; flex-wrap: wrap; }
+.btn { padding: 12px 24px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; text-transform: uppercase; font-size: 12px; transition: 0.15s; font-family: inherit; }
+.btn-primary { background: var(--brand-secondary); color: white; }
+.btn-primary:hover { background: #005494; }
+.btn-primary:disabled { background: #adb5bd; cursor: not-allowed; }
+.btn-secondary { background: #e9ecef; color: #495057; }
+.btn-secondary:hover { background: #dee2e6; }
+
+.export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+.export-card { border: 2px solid var(--brand-grey-200); padding: 30px 20px; text-align: center; cursor: pointer; border-radius: 6px; transition: 0.2s; font-size: 36px; }
+.export-card h3 { font-size: 14px; margin-top: 10px; color: var(--brand-primary); text-transform: uppercase; }
+.export-card:hover { border-color: var(--brand-secondary); background: #f0f7ff; transform: translateY(-2px); }
+
+#serverStatus { background: #fff3cd; color: #856404; padding: 10px; text-align: center; font-weight: bold; font-size: 13px; border-bottom: 1px solid #ffeeba; }
+
+/* Project info banner shown on Page 3 (preview) */
+.project-info-card { background: linear-gradient(135deg, #002b5f, #0066B3); color: white; padding: 24px; border-radius: 6px; margin-bottom: 20px; }
+.project-info-card .pi-title { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+.project-info-card .pi-ref { font-size: 13px; opacity: 0.85; margin-bottom: 16px; }
+.pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.pi-item .pi-lbl { font-size: 11px; text-transform: uppercase; opacity: 0.7; letter-spacing: 0.5px; }
+.pi-item .pi-val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+.transport-summary { background: #fff8e1; border-left: 4px solid var(--brand-accent); padding: 12px 16px; margin: 12px 0; font-size: 13px; border-radius: 4px; }
+.transport-summary strong { color: #856404; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: #6c757d; }
+.empty-state h3 { color: var(--brand-primary); margin-bottom: 8px; }
+
+@media (max-width: 768px) {
+  .builder-container { flex-direction: column; }
+  .param-list { width: 100%; max-height: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">METFRAA Costing Engine</div>
+  <img class="brand-logo" id="brandLogo" src="Metfraa.png" alt="METFRAA" onerror="this.style.display='none'">
+</header>
+<div id="serverStatus">⏳ Connecting to Cloud Database...</div>
+
+<div class="wizard-steps">
+    <div id="step1-ind" class="step-indicator active">1. Project Info</div>
+    <div id="step2-ind" class="step-indicator">2. Build Cost</div>
+    <div id="step3-ind" class="step-indicator">3. Preview</div>
+    <div id="step4-ind" class="step-indicator">4. Save & Download</div>
+</div>
+
+<main class="main">
+
+  <!-- PAGE 1 -->
+  <div id="page1" class="page active">
+    <div class="card">
+      <div class="section-title">Project Identification</div>
+      <div class="form-grid">
+        <div class="form-field"><label class="form-label">Quotation Ref</label><input type="text" id="projRef" class="form-input" placeholder="Met/est/2026/01"></div>
+        <div class="form-field"><label class="form-label">Date</label><input type="date" id="projDate" class="form-input"></div>
+        <div class="form-field"><label class="form-label">Project Name</label><input type="text" id="projName" class="form-input" placeholder="e.g. Gymnasium Indoor Shed"></div>
+        <div class="form-field"><label class="form-label">Client Name</label><input type="text" id="projClient" class="form-input"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Site & Technical Specs</div>
+      <div class="form-grid">
+        <div class="form-field"><label class="form-label">Location</label><input type="text" id="projLoc" class="form-input"></div>
+        <div class="form-field"><label class="form-label">Distance from Vichoor (km)</label><input type="number" id="projDist" class="form-input" value="500"></div>
+        <div class="form-field"><label class="form-label">Building Height (m)</label><input type="number" id="projHeight" class="form-input" value="8" step="0.1"></div>
+        <div class="form-field"><label class="form-label">Total Area (sqm)</label><input type="number" id="projArea" class="form-input" value="0"></div>
+        <div class="form-field"><label class="form-label">Steel Tonnage (MT)</label><input type="number" id="projTonnage" class="form-input" value="100"></div>
+        <div class="form-field"><label class="form-label">Safety Standard</label><select id="projSafety" class="form-select"><option>Average</option><option>Above Average</option><option>High</option></select></div>
+        <div class="form-field"><label class="form-label">Design Included</label><select id="projDesign" class="form-select"><option>Yes</option><option>No</option></select></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Transport Rates (App-side calculation)</div>
+      <div class="form-grid">
+        <div class="form-field"><label class="form-label">Transport Inward Rate (₹/MT/km)</label><input type="number" id="trIn" class="form-input" value="0" step="0.1"></div>
+        <div class="form-field"><label class="form-label">Transport Outward — MT (₹/MT/km)</label><input type="number" id="trOutMT" class="form-input" value="10" step="0.1"></div>
+        <div class="form-field"><label class="form-label">Transport Outward — sqm (₹/sqm/km)</label><input type="number" id="trOutSqm" class="form-input" value="0.04" step="0.001"></div>
+        <div class="form-field"><label class="form-label">Transport Outward — rmt (₹/rmt/km)</label><input type="number" id="trOutRmt" class="form-input" value="0.04" step="0.001"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px;">Financial Parameters</div>
+      <div class="form-grid">
+        <div class="form-field"><label class="form-label">Margin %</label><input type="number" id="projMargin" class="form-input" value="12" step="0.1"></div>
+        <div class="form-field"><label class="form-label">GST %</label><input type="number" id="projGST" class="form-input" value="18" step="0.1"></div>
+      </div>
+    </div>
+    <div class="btn-row"><span></span><button class="btn btn-primary" onclick="goToPage(2)" id="nextBtn" disabled>Build Costing ➔</button></div>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div id="page2" class="page">
+    <div class="builder-container">
+      <div class="param-list" id="sidebar"></div>
+      <div class="workspace card">
+        <h3 id="activeTitle" style="color:var(--brand-primary); margin-bottom:5px;">Parameter</h3>
+        <div id="activeUnitInfo" style="font-size:12px; color:#6c757d; margin-bottom:15px;"></div>
+        <table class="report-table">
+          <thead>
+            <tr><th>SUBCATEGORY</th><th>SELECTION</th><th width="120">RATE / %</th><th width="100">QTY</th><th width="140">TOTAL</th></tr>
+          </thead>
+          <tbody id="builderBody"></tbody>
+          <tfoot>
+            <tr class="row-total">
+              <td colspan="4" style="text-align:right">CATEGORY UNIT RATE</td>
+              <td id="paramUnitRateDisplay" class="cell-num">₹ 0</td>
+            </tr>
+            <tr class="row-total">
+              <td colspan="4" style="text-align:right">CATEGORY TOTAL (Unit × Qty)</td>
+              <td id="paramTotalDisplay" class="cell-num">₹ 0</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div id="paramHelp" style="margin-top:14px; font-size:12px; color:#6c757d;">
+          <strong>How it works:</strong> Each row = a subcategory. RATE rows add ₹ directly per unit. PERCENT rows (Wastages, Overlap) apply % to RAW MATERIAL / SHEET COST cost. The "Qty" applies to the whole parameter — it's the same for every row.
+        </div>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn btn-secondary" onclick="goToPage(1)">◀ Back</button><button class="btn btn-primary" onclick="generatePreview(); goToPage(3)">Preview ➔</button></div>
+  </div>
+
+  <!-- PAGE 3 -->
+  <div id="page3" class="page">
+    <div id="previewArea"></div>
+    <div class="btn-row"><button class="btn btn-secondary" onclick="goToPage(2)">◀ Edit</button><button class="btn btn-primary" onclick="goToPage(4)">Confirm ➔</button></div>
+  </div>
+
+  <!-- PAGE 4 -->
+  <div id="page4" class="page">
+    <div class="card">
+      <div class="section-title">Export Options</div>
+      <div class="export-grid">
+        <div class="export-card" onclick="downloadExcel()">📊<h3>Download Excel</h3></div>
+        <div class="export-card" onclick="downloadPDF()">📄<h3>Download PDF</h3></div>
+        <div class="export-card" id="saveBtn" onclick="saveToOneDrive()">☁️<h3>Save to OneDrive</h3></div>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn btn-secondary" onclick="location.reload()">+ New Project</button></div>
+  </div>
+</main>
+
+<script>
+const RENDER_URL = 'https://metfraa-costing-api.onrender.com';
+let MASTER_DB = {};
+// projectState.selections[paramName][subcategory] = { id, name, rate, qty, line, type }
+let projectState = { details: {}, qtys: {}, selections: {} };
+let activeP = null;
+
+// ----- INIT -----
+window.onload = async () => {
+  const banner = document.getElementById('serverStatus');
+  document.getElementById('projDate').valueAsDate = new Date();
+  try {
+    const res = await fetch(`${RENDER_URL}/api/master-data`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    MASTER_DB = await res.json();
+
+    // Backwards compatibility: if backend returns flat (no .__unit / .subs), wrap it.
+    Object.keys(MASTER_DB).forEach(p => {
+      const node = MASTER_DB[p];
+      if (!node.subs) {
+        MASTER_DB[p] = { __unit: 'MT', subs: node };
+        // and ensure each option has .type
+        Object.values(MASTER_DB[p].subs).forEach(arr => arr.forEach(o => { if (!o.type) o.type = 'RATE'; }));
+      }
+    });
+
+    banner.innerText = "✅ Cloud Database Connected (" + Object.keys(MASTER_DB).length + " parameters loaded)";
+    banner.style.background = "#d4edda";
+    banner.style.color = "#155724";
+    initSidebar();
+    document.getElementById('nextBtn').disabled = false;
+    setTimeout(() => banner.style.display = 'none', 3000);
+  } catch(e) {
+    banner.innerText = "❌ Offline: " + e.message + " — check Render server.";
+    banner.style.background = "#f8d7da";
+    banner.style.color = "#721c24";
+  }
+};
+
+// ----- NAVIGATION -----
+function goToPage(n) {
+  if (n >= 2) captureProjectDetails();
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.step-indicator').forEach(s => s.classList.remove('active'));
+  document.getElementById('page'+n).classList.add('active');
+  document.getElementById('step'+n+'-ind').classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function captureProjectDetails() {
+  projectState.details = {
+    ref: document.getElementById('projRef').value || 'Met/est/2026/XX',
+    date: document.getElementById('projDate').value,
+    name: document.getElementById('projName').value || 'Project',
+    client: document.getElementById('projClient').value || '—',
+    loc: document.getElementById('projLoc').value || '—',
+    dist: parseFloat(document.getElementById('projDist').value) || 0,
+    height: parseFloat(document.getElementById('projHeight').value) || 0,
+    area: parseFloat(document.getElementById('projArea').value) || 0,
+    tonnage: parseFloat(document.getElementById('projTonnage').value) || 0,
+    safety: document.getElementById('projSafety').value,
+    design: document.getElementById('projDesign').value,
+    margin: parseFloat(document.getElementById('projMargin').value) || 0,
+    gst: parseFloat(document.getElementById('projGST').value) || 0,
+    trIn: parseFloat(document.getElementById('trIn').value) || 0,
+    trOutMT: parseFloat(document.getElementById('trOutMT').value) || 0,
+    trOutSqm: parseFloat(document.getElementById('trOutSqm').value) || 0,
+    trOutRmt: parseFloat(document.getElementById('trOutRmt').value) || 0
+  };
+}
+
+function fmtINR(n) { return "₹ " + (Math.round(n || 0)).toLocaleString('en-IN'); }
+function fmtNum(n, dp=2) { return (n || 0).toLocaleString('en-IN', {maximumFractionDigits: dp}); }
+
+// ----- SIDEBAR -----
+function initSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = '';
+  Object.keys(MASTER_DB).forEach(p => {
+    if (!projectState.selections[p]) projectState.selections[p] = {};
+    if (projectState.qtys[p] === undefined) projectState.qtys[p] = '';
+    const div = document.createElement('div');
+    div.className = 'param-item';
+    div.dataset.param = p;
+    div.innerHTML = `${p}<span class="param-status"></span>`;
+    div.onclick = () => loadWorkspace(p, div);
+    sb.appendChild(div);
+  });
+  if (sb.firstChild) loadWorkspace(Object.keys(MASTER_DB)[0], sb.firstChild);
+}
+
+function refreshSidebarStatus() {
+  document.querySelectorAll('.param-item').forEach(el => {
+    const p = el.dataset.param;
+    const hasData = projectState.selections[p] && Object.keys(projectState.selections[p]).length > 0 && projectState.qtys[p];
+    el.classList.toggle('has-data', !!hasData);
+    el.querySelector('.param-status').innerText = hasData ? `${projectState.qtys[p]} ${MASTER_DB[p].__unit}` : '';
+  });
+}
+
+// ----- WORKSPACE -----
+function loadWorkspace(name, el) {
+  activeP = name;
+  document.querySelectorAll('.param-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const unit = MASTER_DB[name].__unit || 'MT';
+  document.getElementById('activeTitle').innerText = name;
+  document.getElementById('activeUnitInfo').innerText = `Unit: ${unit}`;
+
+  const body = document.getElementById('builderBody');
+  body.innerHTML = '';
+
+  // Quantity row at top — applies to ALL subcategories of this parameter
+  const qtyRow = document.createElement('tr');
+  qtyRow.style.background = '#fff8e1';
+  qtyRow.innerHTML = `
+    <td colspan="3" style="font-weight:bold; color:var(--brand-primary);">QUANTITY (applies to whole parameter)</td>
+    <td><input type="number" class="form-input" id="paramQty" value="${projectState.qtys[name]||''}" step="0.01" placeholder="0"></td>
+    <td class="cell-num">${unit}</td>
+  `;
+  body.appendChild(qtyRow);
+
+  // Add transport-outward auto-row info
+  const trRate = unit === 'MT' ? projectState.details.trOutMT
+              : unit === 'sqm' ? projectState.details.trOutSqm
+              : unit === 'rmt' ? projectState.details.trOutRmt : 0;
+  const dist = projectState.details.dist || parseFloat(document.getElementById('projDist').value) || 0;
+  const trUnitRate = (trRate || 0) * dist;
+  const trRow = document.createElement('tr');
+  trRow.style.background = '#e8f5e9';
+  trRow.innerHTML = `
+    <td>TRANSPORT OUTWARD <span class="tag-rate">AUTO</span></td>
+    <td style="font-style:italic; color:#555">${dist} km × ₹${trRate}/${unit}/km</td>
+    <td class="cell-num">${fmtINR(trUnitRate)}</td>
+    <td style="font-style:italic; color:#555">per ${unit}</td>
+    <td class="cell-num" id="trOutLine">—</td>
+  `;
+  body.appendChild(trRow);
+
+  // Now build subcategory rows
+  Object.entries(MASTER_DB[name].subs).forEach(([sub, opts]) => {
+    const saved = projectState.selections[activeP][sub] || { id: '', rate: 0, line: 0, name: '', type: 'RATE' };
+    let optHtml = `<option value="">-- Select Option --</option>`;
+    opts.forEach(o => {
+      const r = o.rate || 0;
+      optHtml += `<option value="${o.id}" data-name="${o.name}" data-rate="${r}" data-type="${o.type}" ${saved.id == o.id ? 'selected' : ''}>${o.name}${o.type==='PERCENT'?' ('+r+'%)':''}</option>`;
+    });
+
+    const row = document.createElement('tr');
+    row.dataset.sub = sub;
+    row.innerHTML = `
+      <td>${sub}</td>
+      <td><select class="form-select o-sel" data-sub="${sub}">${optHtml}</select></td>
+      <td class="cell-num r-v">—</td>
+      <td class="cell-num q-v" style="font-style:italic; color:#888">—</td>
+      <td class="cell-num l-v">—</td>
+    `;
+    body.appendChild(row);
+  });
+
+  document.getElementById('paramQty').oninput = sync;
+  document.querySelectorAll('.o-sel').forEach(i => i.oninput = sync);
+  sync();
+}
+
+function sync() {
+  const qty = parseFloat(document.getElementById('paramQty').value) || 0;
+  projectState.qtys[activeP] = document.getElementById('paramQty').value;
+
+  const unit = MASTER_DB[activeP].__unit || 'MT';
+  const rows = document.querySelectorAll('#builderBody tr[data-sub]');
+
+  // First pass: figure out raw material cost (needed for PERCENT rows)
+  let rawMaterialUnitCost = 0;
+  rows.forEach(row => {
+    const s = row.querySelector('.o-sel');
+    if (!s.value) return;
+    const opt = s.options[s.selectedIndex];
+    const t = opt.dataset.type;
+    const sub = row.dataset.sub.toUpperCase();
+    if (t === 'RATE' && (sub === 'RAW MATERIAL' || sub === 'SHEET COST')) {
+      rawMaterialUnitCost += parseFloat(opt.dataset.rate) || 0;
+    }
+  });
+
+  // Second pass: compute each row
+  let unitRateTotal = 0;
+  projectState.selections[activeP] = {};
+  rows.forEach(row => {
+    const s = row.querySelector('.o-sel');
+    const sub = row.dataset.sub;
+    let rateLabel = '—', lineLabel = '—', perUnitContribution = 0;
+    if (s.value) {
+      const opt = s.options[s.selectedIndex];
+      const r = parseFloat(opt.dataset.rate) || 0;
+      const t = opt.dataset.type;
+      if (t === 'PERCENT') {
+        perUnitContribution = rawMaterialUnitCost * (r / 100);
+        rateLabel = r.toFixed(2) + '%';
+      } else {
+        perUnitContribution = r;
+        rateLabel = fmtINR(r);
+      }
+      unitRateTotal += perUnitContribution;
+      const lineTotal = perUnitContribution * qty;
+      lineLabel = fmtINR(lineTotal);
+      projectState.selections[activeP][sub] = {
+        id: s.value, name: opt.dataset.name,
+        rate: r, type: t, perUnit: perUnitContribution,
+        qty, line: lineTotal
+      };
+    }
+    row.querySelector('.r-v').innerText = rateLabel;
+    row.querySelector('.l-v').innerText = lineLabel;
+  });
+
+  // Transport outward auto-line
+  const trRate = unit === 'MT' ? projectState.details.trOutMT
+              : unit === 'sqm' ? projectState.details.trOutSqm
+              : unit === 'rmt' ? projectState.details.trOutRmt : 0;
+  const dist = projectState.details.dist || 0;
+  const trPerUnit = (trRate || 0) * dist;
+  const trLine = trPerUnit * qty;
+  const trCell = document.getElementById('trOutLine');
+  if (trCell) trCell.innerText = qty > 0 ? fmtINR(trLine) : '—';
+  unitRateTotal += trPerUnit;
+  if (qty > 0) {
+    projectState.selections[activeP]['TRANSPORT OUTWARD'] = {
+      id: 'AUTO', name: `${dist} km × ₹${trRate}/${unit}/km`,
+      rate: trPerUnit, type: 'RATE', perUnit: trPerUnit,
+      qty, line: trLine, isAuto: true
+    };
+  }
+
+  document.getElementById('paramUnitRateDisplay').innerText = fmtINR(unitRateTotal);
+  document.getElementById('paramTotalDisplay').innerText = fmtINR(unitRateTotal * qty);
+
+  refreshSidebarStatus();
+}
+
+// ----- PREVIEW -----
+function generatePreview() {
+  captureProjectDetails();
+  const d = projectState.details;
+  let grandBase = 0;
+
+  // Project info card (branded gradient header)
+  let html = `
+  <div class="project-info-card">
+    <div class="pi-title">${d.name}</div>
+    <div class="pi-ref">Quotation Ref: <strong>${d.ref}</strong> &nbsp;|&nbsp; Date: <strong>${d.date}</strong></div>
+    <div class="pi-grid">
+      <div class="pi-item"><div class="pi-lbl">Client</div><div class="pi-val">${d.client}</div></div>
+      <div class="pi-item"><div class="pi-lbl">Location</div><div class="pi-val">${d.loc}</div></div>
+      <div class="pi-item"><div class="pi-lbl">Distance</div><div class="pi-val">${d.dist} km</div></div>
+      <div class="pi-item"><div class="pi-lbl">Building Height</div><div class="pi-val">${d.height} m</div></div>
+      <div class="pi-item"><div class="pi-lbl">Total Area</div><div class="pi-val">${fmtNum(d.area,0)} sqm</div></div>
+      <div class="pi-item"><div class="pi-lbl">Steel Tonnage</div><div class="pi-val">${fmtNum(d.tonnage,2)} MT</div></div>
+      <div class="pi-item"><div class="pi-lbl">Safety Standard</div><div class="pi-val">${d.safety}</div></div>
+      <div class="pi-item"><div class="pi-lbl">Design Included</div><div class="pi-val">${d.design}</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+  <div class="section-title">Final Quotation Sheet</div>
+  <table class="report-table" id="finalTable">
+    <thead><tr>
+      <th width="50">SL</th>
+      <th>DESCRIPTION</th>
+      <th class="cell-num" width="110">UNIT RATE</th>
+      <th class="cell-num" width="80">QTY</th>
+      <th class="cell-num" width="80">UNIT</th>
+      <th class="cell-num" width="140">TOTAL</th>
+    </tr></thead>
+    <tbody>`;
+
+  let sl = 1;
+  Object.entries(projectState.selections).forEach(([pName, subs]) => {
+    const entries = Object.entries(subs);
+    if (entries.length === 0) return;
+    const qty = parseFloat(projectState.qtys[pName]) || 0;
+    if (qty <= 0) return;
+
+    const unit = MASTER_DB[pName].__unit || 'MT';
+    let unitRateTotal = 0;
+    entries.forEach(([, data]) => unitRateTotal += data.perUnit);
+    const lineTotal = unitRateTotal * qty;
+
+    html += `<tr class="row-category"><td>${sl}</td><td colspan="5">${pName}</td></tr>`;
+    entries.forEach(([subName, data]) => {
+      const rateDisp = data.type === 'PERCENT'
+        ? `${data.rate.toFixed(2)}% → ${fmtINR(data.perUnit)}`
+        : fmtINR(data.perUnit);
+      html += `<tr>
+        <td></td>
+        <td style="padding-left:20px">${subName}${data.isAuto?' <span class="tag-rate">AUTO</span>':''} <span style="color:#666;font-size:11px">(${data.name})</span></td>
+        <td class="cell-num">${rateDisp}</td>
+        <td class="cell-num">—</td>
+        <td class="cell-num">—</td>
+        <td class="cell-num">—</td>
+      </tr>`;
+    });
+    html += `<tr class="row-total">
+      <td></td>
+      <td style="text-align:right">SUBTOTAL — ${pName}</td>
+      <td class="cell-num">${fmtINR(unitRateTotal)}</td>
+      <td class="cell-num">${fmtNum(qty,2)}</td>
+      <td class="cell-num">${unit}</td>
+      <td class="cell-num">${fmtINR(lineTotal)}</td>
+    </tr>`;
+    grandBase += lineTotal;
+    sl++;
+  });
+
+  if (sl === 1) {
+    html += `<tr><td colspan="6" class="empty-state"><h3>No items selected</h3><div>Go back to Page 2 and configure parameters.</div></td></tr>`;
+  }
+
+  const margin = grandBase * (d.margin / 100);
+  const afterMargin = grandBase + margin;
+  const gst = afterMargin * (d.gst / 100);
+  const final = afterMargin + gst;
+
+  html += `
+    <tr class="row-total"><td colspan="5" style="text-align:right">SUBTOTAL (BASE COST)</td><td class="cell-num">${fmtINR(grandBase)}</td></tr>
+    <tr><td colspan="5" style="text-align:right">MARGIN @ ${d.margin}%</td><td class="cell-num">${fmtINR(margin)}</td></tr>
+    <tr class="row-total"><td colspan="5" style="text-align:right">AFTER MARGIN</td><td class="cell-num">${fmtINR(afterMargin)}</td></tr>
+    <tr><td colspan="5" style="text-align:right">GST @ ${d.gst}%</td><td class="cell-num">${fmtINR(gst)}</td></tr>
+    <tr class="row-grand"><td colspan="5" style="text-align:right">GRAND TOTAL</td><td class="cell-num">${fmtINR(final)}</td></tr>
+  </tbody></table>`;
+
+  // Per-sqm / per-sqft synopsis
+  if (d.area > 0) {
+    const perSqm = final / d.area;
+    const perSqft = final / (d.area * 10.7639);
+    html += `<div class="transport-summary" style="margin-top:18px;">
+      <strong>SYNOPSIS:</strong>
+      Total Area: <strong>${fmtNum(d.area,0)} sqm</strong> (${fmtNum(d.area*10.7639,0)} sqft) &nbsp;|&nbsp;
+      Per sqm: <strong>${fmtINR(perSqm)}</strong> &nbsp;|&nbsp;
+      Per sqft: <strong>${fmtINR(perSqft)}</strong>
+    </div>`;
+  }
+
+  html += `<div style="margin-top:20px; font-size:11px; color:#6c757d; border-top:1px solid #dee2e6; padding-top:12px;">
+    <strong>METFRAA</strong> &nbsp;|&nbsp; Generated on ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; This is a system-generated quotation.
+  </div>`;
+  html += `</div>`;
+
+  document.getElementById('previewArea').innerHTML = html;
+}
+
+// ----- EXPORT: EXCEL -----
+function downloadExcel() {
+  const d = projectState.details;
+  const wb = XLSX.utils.book_new();
+
+  // Build a structured array-of-arrays so we can style nicely
+  const rows = [];
+  rows.push(['METFRAA COSTING ENGINE — QUOTATION']);
+  rows.push([]);
+  rows.push(['Quotation Ref', d.ref, '', 'Date', d.date]);
+  rows.push(['Project Name', d.name, '', 'Client', d.client]);
+  rows.push(['Location', d.loc, '', 'Distance (km)', d.dist]);
+  rows.push(['Building Height (m)', d.height, '', 'Total Area (sqm)', d.area]);
+  rows.push(['Steel Tonnage (MT)', d.tonnage, '', 'Safety Standard', d.safety]);
+  rows.push(['Design Included', d.design, '', 'Margin %', d.margin]);
+  rows.push(['GST %', d.gst]);
+  rows.push([]);
+  rows.push(['SL', 'DESCRIPTION', 'OPTION', 'UNIT RATE (₹)', 'QTY', 'UNIT', 'TOTAL (₹)']);
+
+  let sl = 1, grandBase = 0;
+  Object.entries(projectState.selections).forEach(([pName, subs]) => {
+    const entries = Object.entries(subs);
+    const qty = parseFloat(projectState.qtys[pName]) || 0;
+    if (entries.length === 0 || qty <= 0) return;
+    const unit = MASTER_DB[pName].__unit || 'MT';
+    let unitRateTotal = 0;
+    entries.forEach(([, data]) => unitRateTotal += data.perUnit);
+    const lineTotal = unitRateTotal * qty;
+
+    rows.push([sl, pName, '', '', '', '', '']);
+    entries.forEach(([subName, data]) => {
+      rows.push(['', '  ' + subName, data.name,
+        data.type === 'PERCENT' ? data.rate.toFixed(2)+'%' : Math.round(data.perUnit),
+        '', '', '']);
+    });
+    rows.push(['', `SUBTOTAL — ${pName}`, '', Math.round(unitRateTotal), qty, unit, Math.round(lineTotal)]);
+    grandBase += lineTotal;
+    sl++;
+  });
+
+  const margin = grandBase * (d.margin / 100);
+  const afterMargin = grandBase + margin;
+  const gst = afterMargin * (d.gst / 100);
+  const final = afterMargin + gst;
+
+  rows.push([]);
+  rows.push(['', '', '', '', '', 'SUBTOTAL', Math.round(grandBase)]);
+  rows.push(['', '', '', '', '', `MARGIN @ ${d.margin}%`, Math.round(margin)]);
+  rows.push(['', '', '', '', '', 'AFTER MARGIN', Math.round(afterMargin)]);
+  rows.push(['', '', '', '', '', `GST @ ${d.gst}%`, Math.round(gst)]);
+  rows.push(['', '', '', '', '', 'GRAND TOTAL', Math.round(final)]);
+  if (d.area > 0) {
+    rows.push([]);
+    rows.push(['', '', '', '', '', 'PER SQM', Math.round(final / d.area)]);
+    rows.push(['', '', '', '', '', 'PER SQFT', Math.round(final / (d.area * 10.7639))]);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:6},{wch:38},{wch:28},{wch:16},{wch:10},{wch:8},{wch:18}];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:6}}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Quotation');
+  XLSX.writeFile(wb, `${(d.ref||'Quotation').replace(/[^a-z0-9]/gi,'_')}_${d.name.replace(/[^a-z0-9]/gi,'_')}.xlsx`);
+}
+
+// ----- EXPORT: PDF -----
+function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const d = projectState.details;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // ---- Header band ----
+  doc.setFillColor(0, 43, 95);
+  doc.rect(0, 0, pageW, 28, 'F');
+  doc.setFillColor(0, 102, 179);
+  doc.rect(0, 28, pageW, 2, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('METFRAA', 14, 14);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Costing Engine — Quotation', 14, 21);
+
+  // Logo (try to embed, fall back silently)
+  try {
+    const logo = document.getElementById('brandLogo');
+    if (logo && logo.complete && logo.naturalWidth > 0) {
+      const canvas = document.createElement('canvas');
+      canvas.width = logo.naturalWidth; canvas.height = logo.naturalHeight;
+      canvas.getContext('2d').drawImage(logo, 0, 0);
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', pageW - 40, 5, 26, 18);
+    }
+  } catch(e) { /* skip logo */ }
+
+  // ---- Project info block ----
+  let y = 38;
+  doc.setTextColor(0, 43, 95);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(d.name, 14, y); y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text(`Quotation Ref: ${d.ref}    |    Date: ${d.date}`, 14, y); y += 6;
+
+  // Two-column info grid
+  const info = [
+    ['Client', d.client, 'Location', d.loc],
+    ['Distance', d.dist + ' km', 'Building Height', d.height + ' m'],
+    ['Total Area', fmtNum(d.area,0) + ' sqm', 'Steel Tonnage', fmtNum(d.tonnage,2) + ' MT'],
+    ['Safety Standard', d.safety, 'Design Included', d.design]
+  ];
+  doc.setFontSize(8);
+  info.forEach(rowArr => {
+    doc.setFont('helvetica','bold'); doc.setTextColor(100); doc.text(rowArr[0]+':', 14, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(20); doc.text(String(rowArr[1]), 40, y);
+    doc.setFont('helvetica','bold'); doc.setTextColor(100); doc.text(rowArr[2]+':', 110, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(20); doc.text(String(rowArr[3]), 145, y);
+    y += 5;
+  });
+  y += 2;
+
+  // ---- Build table data ----
+  const body = [];
+  let sl = 1, grandBase = 0;
+  Object.entries(projectState.selections).forEach(([pName, subs]) => {
+    const entries = Object.entries(subs);
+    const qty = parseFloat(projectState.qtys[pName]) || 0;
+    if (entries.length === 0 || qty <= 0) return;
+    const unit = MASTER_DB[pName].__unit || 'MT';
+    let unitRateTotal = 0;
+    entries.forEach(([, data]) => unitRateTotal += data.perUnit);
+    const lineTotal = unitRateTotal * qty;
+
+    body.push([{ content: `${sl}. ${pName}`, colSpan: 6, styles: { fillColor:[233,236,239], textColor:[0,43,95], fontStyle:'bold' }}]);
+    entries.forEach(([subName, data]) => {
+      body.push([
+        '',
+        `${subName}  (${data.name})`,
+        data.type === 'PERCENT' ? `${data.rate.toFixed(2)}%` : fmtINR(data.perUnit).replace('₹ ',''),
+        '', '', ''
+      ]);
+    });
+    body.push([
+      { content: `Subtotal — ${pName}`, colSpan: 2, styles: { fontStyle:'bold', halign:'right', fillColor:[241,243,245] }},
+      { content: fmtINR(unitRateTotal).replace('₹ ',''), styles: { fontStyle:'bold', halign:'right', fillColor:[241,243,245] }},
+      { content: fmtNum(qty,2), styles: { fontStyle:'bold', halign:'right', fillColor:[241,243,245] }},
+      { content: unit, styles: { fontStyle:'bold', halign:'center', fillColor:[241,243,245] }},
+      { content: fmtINR(lineTotal).replace('₹ ',''), styles: { fontStyle:'bold', halign:'right', fillColor:[241,243,245] }}
+    ]);
+    grandBase += lineTotal;
+    sl++;
+  });
+
+  const margin = grandBase * (d.margin / 100);
+  const afterMargin = grandBase + margin;
+  const gst = afterMargin * (d.gst / 100);
+  const final = afterMargin + gst;
+
+  body.push([{ content: 'SUBTOTAL (BASE COST)', colSpan: 5, styles: { halign:'right', fontStyle:'bold' }},
+             { content: fmtINR(grandBase).replace('₹ ',''), styles: { halign:'right', fontStyle:'bold' }}]);
+  body.push([{ content: `MARGIN @ ${d.margin}%`, colSpan: 5, styles: { halign:'right' }},
+             { content: fmtINR(margin).replace('₹ ',''), styles: { halign:'right' }}]);
+  body.push([{ content: `GST @ ${d.gst}%`, colSpan: 5, styles: { halign:'right' }},
+             { content: fmtINR(gst).replace('₹ ',''), styles: { halign:'right' }}]);
+  body.push([{ content: 'GRAND TOTAL', colSpan: 5, styles: { halign:'right', fontStyle:'bold', fillColor:[0,43,95], textColor:[255,255,255] }},
+             { content: fmtINR(final).replace('₹ ',''), styles: { halign:'right', fontStyle:'bold', fillColor:[0,43,95], textColor:[255,255,255] }}]);
+
+  doc.autoTable({
+    startY: y,
+    head: [['SL','DESCRIPTION','UNIT RATE','QTY','UNIT','TOTAL (₹)']],
+    body,
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2.5, font: 'helvetica' },
+    headStyles: { fillColor: [0, 43, 95], textColor: 255, fontStyle: 'bold', halign:'left' },
+    columnStyles: {
+      0: { cellWidth: 10, halign:'center' },
+      1: { cellWidth: 75 },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 18, halign: 'right' },
+      4: { cellWidth: 14, halign: 'center' },
+      5: { cellWidth: 'auto', halign: 'right' }
+    },
+    didDrawPage: function(data) {
+      // Footer
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setFontSize(7); doc.setTextColor(120);
+      doc.text(`METFRAA  |  ${d.ref}  |  Generated ${new Date().toLocaleString('en-IN')}`, 14, pageH - 8);
+      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageW - 20, pageH - 8);
+    }
+  });
+
+  // Synopsis
+  if (d.area > 0) {
+    let yEnd = doc.lastAutoTable.finalY + 6;
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(0,43,95);
+    doc.text('SYNOPSIS', 14, yEnd); yEnd += 5;
+    doc.setFont('helvetica','normal'); doc.setTextColor(40);
+    doc.text(`Total Area: ${fmtNum(d.area,0)} sqm  |  Per sqm: ${fmtINR(final/d.area)}  |  Per sqft: ${fmtINR(final/(d.area*10.7639))}`, 14, yEnd);
+  }
+
+  doc.save(`${(d.ref||'Quotation').replace(/[^a-z0-9]/gi,'_')}_${d.name.replace(/[^a-z0-9]/gi,'_')}.pdf`);
+}
+
+// ----- SAVE TO ONEDRIVE -----
+async function saveToOneDrive() {
+  const btn = document.getElementById('saveBtn');
+  const orig = btn.innerHTML;
+  btn.innerHTML = "⏳<h3>Saving…</h3>";
+
+  const previewHTML = document.getElementById('previewArea').innerHTML;
+  const d = projectState.details;
+  const fileName = `${d.ref||'Quotation'}_${d.name||'Project'}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  // Wrap in a self-contained, branded HTML doc so it opens nicely from OneDrive
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${d.ref} — ${d.name}</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width:1100px; margin:30px auto; padding:0 20px; color:#333; }
+  .project-info-card { background: linear-gradient(135deg,#002b5f,#0066B3); color:white; padding:24px; border-radius:6px; margin-bottom:20px; }
+  .project-info-card .pi-title { font-size:22px; font-weight:bold; }
+  .project-info-card .pi-ref { font-size:13px; opacity:0.85; margin-bottom:16px; }
+  .pi-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:14px; }
+  .pi-item .pi-lbl { font-size:11px; text-transform:uppercase; opacity:0.7; }
+  .pi-item .pi-val { font-size:14px; font-weight:600; }
+  .card { background:white; border:1px solid #E9ECEF; border-radius:6px; padding:24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+  .section-title { font-size:15px; font-weight:700; text-transform:uppercase; color:#002b5f; border-bottom:2px solid #E9ECEF; padding-bottom:8px; margin-bottom:20px; }
+  .report-table { width:100%; border-collapse:collapse; font-size:13px; border:1px solid #ccc; }
+  .report-table th { background:#002b5f; color:white; padding:10px 8px; text-align:left; text-transform:uppercase; font-size:12px; }
+  .report-table td { border:1px solid #dee2e6; padding:8px; }
+  .row-category { background:#E9ECEF; font-weight:bold; color:#002b5f; text-transform:uppercase; font-size:12px; }
+  .row-total { background:#f1f3f5; font-weight:bold; }
+  .row-grand { background:#002b5f; color:white; font-weight:bold; font-size:14px; }
+  .cell-num { text-align:right; font-family:'Consolas',monospace; font-weight:bold; }
+  .tag-rate { display:inline-block; padding:1px 6px; background:#cfe2ff; color:#084298; font-size:10px; border-radius:3px; }
+  .transport-summary { background:#fff8e1; border-left:4px solid #FFC107; padding:12px 16px; margin:12px 0; font-size:13px; border-radius:4px; }
+  .header-bar { background:#002b5f; color:white; padding:14px 24px; border-bottom:4px solid #0066B3; margin:-30px -20px 20px -20px; display:flex; justify-content:space-between; align-items:center; }
+  .header-bar .brand { font-size:20px; font-weight:bold; text-transform:uppercase; }
+  @media print { body { margin: 0; } .header-bar { margin: 0 0 20px 0; } }
+</style>
+</head><body>
+<div class="header-bar">
+  <div class="brand">METFRAA Costing Engine</div>
+  <div style="font-size:12px;opacity:0.8">Quotation Document</div>
+</div>
+${previewHTML}
+</body></html>`;
+
+  try {
+    const res = await fetch(`${RENDER_URL}/api/save-quotation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, htmlContent: fullHtml })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(`✅ Saved to OneDrive!\n\nFolder: Metfraa_Costing_App / Generated_Costings\nFile: ${fileName}.html`);
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch(e) {
+    alert("❌ Save Error: " + e.message + "\n\nCheck:\n• Render server is running\n• Folder 'Generated_Costings' exists in OneDrive\n• Azure app has Files.ReadWrite.All permission");
+  }
+  btn.innerHTML = orig;
+}
+</script>
+</body>
+</html>
